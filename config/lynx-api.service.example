@@ -1,0 +1,20 @@
+# Optional systemd template; validate foreground operation first.
+[Unit]
+Description=Lynx Harness API
+After=network.target lynx-llama.service
+Requires=lynx-llama.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lynx
+EnvironmentFile=/opt/lynx/.env
+ExecStart=/opt/lynx/.venv/bin/uvicorn lynx_harness.api:create_app --factory --host 127.0.0.1 --port 8090
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lynx/data /opt/lynx/artifacts /opt/lynx/knowledge
+
+[Install]
+WantedBy=multi-user.target

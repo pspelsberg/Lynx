@@ -1,0 +1,230 @@
+{
+  "model": "Qwen3.5-4B-Q6_K.gguf",
+  "repository": "unsloth/Qwen3.5-4B-GGUF",
+  "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+  "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q6_K.gguf",
+  "sha256": "fdedd781c9ce676ab66b018ca247ff78e8a33c98098a822c1e2d5075e7718f66",
+  "bytes": 3525956768,
+  "format": "GGUF",
+  "quantization": "Q6_K",
+  "models": [
+    {
+      "model": "Qwen3.5-4B-Q6_K.gguf",
+      "repository": "unsloth/Qwen3.5-4B-GGUF",
+      "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+      "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q6_K.gguf",
+      "sha256": "fdedd781c9ce676ab66b018ca247ff78e8a33c98098a822c1e2d5075e7718f66",
+      "bytes": 3525956768,
+      "format": "GGUF",
+      "quantization": "Q6_K",
+      "id": "qwen35-4b-q6_k",
+      "filename": "Qwen3.5-4B-Q6_K.gguf",
+      "downloadable": true,
+      "license": "Apache-2.0",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "4 GB"
+    },
+    {
+      "id": "qwen38-9b-distill-q4_k_m",
+      "model": "Qwen3.8-9B-Q4_K_M.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q4_K_M.gguf",
+      "sha256": "df13d66021cef676f82be74053220fd75af6bf2a6a7fb77f5222ab9e50744a7a",
+      "bytes": 5780090176,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q4_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q4_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "5.38 GiB; deferred"
+    },
+    {
+      "id": "qwen38-9b-distill-q5_k_m",
+      "model": "Qwen3.8-9B-Q5_K_M.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q5_K_M.gguf",
+      "sha256": "c6667345d4e45d8cddca3c8e997a483a4f9ae04ee9402273c24e959dee7173dc",
+      "bytes": 6642543936,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q5_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q5_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "6.19 GiB; deferred"
+    },
+    {
+      "id": "qwen38-9b-distill-q6_k",
+      "model": "Qwen3.8-9B-Q6_K.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q6_K.gguf",
+      "sha256": "0f1271373f899912bfe4ea76299af7dd83722d98ea421b0827501c3a2c6da22b",
+      "bytes": 7558901056,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q6_K.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q6_K",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "7.04 GiB; deferred"
+    },
+    {
+      "id": "qwen38-9b-distill-q8_0",
+      "model": "Qwen3.8-9B-Q8_0.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q8_0.gguf",
+      "sha256": "79ca5d342a07922f2bbf38c8d892a79a3c8620c65feaf4b1c66b7830ae724db8",
+      "bytes": 9786060096,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q8_0.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q8_0",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "9.11 GiB; deferred"
+    },
+    {
+      "id": "qwen38-27b-ud-q4_k_m",
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "repository": "unsloth/Qwen3.8-27B-GGUF",
+      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "sha256": "76b9d90a30128aedd438a2239b9b3867e877687223a9bf8c55eff5314e3a1473",
+      "bytes": 16464440224,
+      "format": "GGUF",
+      "filename": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "UD-Q4_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking",
+        "teacher"
+      ],
+      "vram_hint": "15.33 GiB; deferred"
+    }
+  ],
+  "deferred_models": [
+    {
+      "id": "qwen38-9b-distill-q4_k_m",
+      "model": "Qwen3.8-9B-Q4_K_M.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q4_K_M.gguf",
+      "sha256": "df13d66021cef676f82be74053220fd75af6bf2a6a7fb77f5222ab9e50744a7a",
+      "bytes": 5780090176,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q4_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q4_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "5.38 GiB; deferred",
+      "reason": "not executable under single-model policy"
+    },
+    {
+      "id": "qwen38-9b-distill-q5_k_m",
+      "model": "Qwen3.8-9B-Q5_K_M.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q5_K_M.gguf",
+      "sha256": "c6667345d4e45d8cddca3c8e997a483a4f9ae04ee9402273c24e959dee7173dc",
+      "bytes": 6642543936,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q5_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q5_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "6.19 GiB; deferred",
+      "reason": "not executable under single-model policy"
+    },
+    {
+      "id": "qwen38-9b-distill-q6_k",
+      "model": "Qwen3.8-9B-Q6_K.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q6_K.gguf",
+      "sha256": "0f1271373f899912bfe4ea76299af7dd83722d98ea421b0827501c3a2c6da22b",
+      "bytes": 7558901056,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q6_K.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q6_K",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "7.04 GiB; deferred",
+      "reason": "not executable under single-model policy"
+    },
+    {
+      "id": "qwen38-9b-distill-q8_0",
+      "model": "Qwen3.8-9B-Q8_0.gguf",
+      "repository": "empero-ai/Qwen3.8-9B-Distill-GGUF",
+      "revision": "760121cd70bb4c36b2b5ec58eb765e0df5987efe",
+      "url": "https://huggingface.co/empero-ai/Qwen3.8-9B-Distill-GGUF/resolve/760121cd70bb4c36b2b5ec58eb765e0df5987efe/Qwen3.8-9B-Q8_0.gguf",
+      "sha256": "79ca5d342a07922f2bbf38c8d892a79a3c8620c65feaf4b1c66b7830ae724db8",
+      "bytes": 9786060096,
+      "format": "GGUF",
+      "filename": "Qwen3.8-9B-Q8_0.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "Q8_0",
+      "capabilities": [
+        "tool_use",
+        "thinking"
+      ],
+      "vram_hint": "9.11 GiB; deferred",
+      "reason": "not executable under single-model policy"
+    },
+    {
+      "id": "qwen38-27b-ud-q4_k_m",
+      "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "repository": "unsloth/Qwen3.8-27B-GGUF",
+      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "sha256": "76b9d90a30128aedd438a2239b9b3867e877687223a9bf8c55eff5314e3a1473",
+      "bytes": 16464440224,
+      "format": "GGUF",
+      "filename": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "downloadable": false,
+      "license": "Apache-2.0",
+      "quantization": "UD-Q4_K_M",
+      "capabilities": [
+        "tool_use",
+        "thinking",
+        "teacher"
+      ],
+      "vram_hint": "15.33 GiB; deferred",
+      "reason": "not executable under single-model policy"
+    }
+  ]
+}

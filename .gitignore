@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.sqlite3
+/data/*
+/artifacts/*
+/knowledge/*
+!data/.gitkeep
+!artifacts/.gitkeep
+!knowledge/.gitkeep
+*.gguf
+build/
+third_party/
+models/
+data/runs/

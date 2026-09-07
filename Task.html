@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lynx Harness - Coding Agent Roadmap & Execution Plan</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #21262d;
+            --border: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-purple: #bc8cff;
+            --accent-amber: #d29922;
+            --accent-red: #f85149;
+            --tag-bg: rgba(56, 139, 253, 0.15);
+            --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .header-badge {
+            display: inline-block;
+            background: rgba(188, 140, 255, 0.15);
+            color: var(--accent-purple);
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .meta-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .meta-card .label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .meta-card .value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+            margin-top: 0.2rem;
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 2rem 0 1rem;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tasks-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.2rem;
+        }
+
+        .task-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+
+        .task-card:hover {
+            border-color: var(--accent);
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .task-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .task-num {
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .badge-pending {
+            background: rgba(210, 153, 34, 0.15);
+            color: var(--accent-amber);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+        }
+
+        .badge-progress {
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+        }
+
+        .badge-done {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .task-desc {
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+        }
+
+        .task-details {
+            background: var(--bg-card);
+            border-radius: 6px;
+            padding: 1rem;
+            font-size: 0.88rem;
+            border-left: 3px solid var(--accent);
+        }
+
+        .task-details ul {
+            padding-left: 1.2rem;
+            margin-top: 0.5rem;
+        }
+
+        .task-details li {
+            margin-bottom: 0.3rem;
+        }
+
+        code {
+            font-family: var(--font-mono);
+            background: rgba(110, 118, 129, 0.2);
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #f0f6fc;
+        }
+
+        .spec-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.88rem;
+        }
+
+        .spec-table th, .spec-table td {
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        .spec-table th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .footer {
+            margin-top: 3rem;
+            border-top: 1px solid var(--border);
+            padding-top: 1.5rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <span class="header-badge">Lynx Autonomous Coding Agent</span>
+            <h1>Roadmap & Implementation Plan: Phase 2</h1>
+            <p class="subtitle">Vollständige Coding-Agent-Erweiterungen für den Qwen-3.5-4B-first Harness</p>
+
+            <div class="meta-grid">
+                <div class="meta-card">
+                    <div class="label">Zielmodell</div>
+                    <div class="value">Qwen3.5-4B-Q6_K</div>
+                </div>
+                <div class="meta-card">
+                    <div class="label">Kontextfenster</div>
+                    <div class="value">8.192 Tokens</div>
+                </div>
+                <div class="meta-card">
+                    <div class="label">Core Dependencies</div>
+                    <div class="value">0 (Pure Python Stdlib)</div>
+                </div>
+                <div class="meta-card">
+                    <div class="label">Unit Tests</div>
+                    <div class="value">148 Passed (1 Skipped)</div>
+                </div>
+            </div>
+        </header>
+
+        <h2 class="section-title">Architektur-Ziele & Sicherheits-Leitplanken</h2>
+        <div class="task-details" style="border-left-color: var(--accent-green); margin-bottom: 2rem;">
+            <ul>
+                <li><strong>Strict Dependency-Free:</strong> Der Kern nutzt ausschließlich Python-Standardbibliotheken (<code>ast</code>, <code>fnmatch</code>, <code>subprocess</code> in Gateways, <code>difflib</code>, <code>shlex</code>). Keine neuen Fremdpakete in <code>pyproject.toml</code>.</li>
+                <li><strong>Untrusted Observations:</strong> Alle Tool-Ausgaben bleiben untrusted Data-Plane-Observations und dürfen nicht zu ausführbarer Policy synthethisiert werden.</li>
+                <li><strong>Async & Sandboxed:</strong> Alle neuen Tools laufen asynchron hinter dem <code>ToolGateway</code> und beachten Timeouts, Limits und Pfad-Jails.</li>
+            </ul>
+        </div>
+
+        <h2 class="section-title">Arbeitspakete / Tasks</h2>
+        <div class="tasks-grid">
+
+            <!-- Task 1 -->
+            <div class="task-card" id="task-1">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-01</span>
+                        <span>workspace.test – Test-Execution & Self-Repair Loop</span>
+                    </div>
+                    <span class="badge badge-done" id="status-1">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Schließt die Lücke von bloßer Syntaxvalidierung zu funktionaler Korrektheit. Ermöglicht dem Agenten das Ausführen der Testsuite des Projekts in einer streng isolierten Subprozess-Umgebung.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li>Tool-Name: <code>workspace.test</code> (RiskLevel: <code>LOCAL_MUTATION</code>)</li>
+                        <li>Parameter: <code>runner</code> (<code>"auto"</code>, <code>"unittest"</code>, <code>"pytest"</code>), <code>target</code> (optionaler Pfad), <code>extra_args</code> (gefilterte Argumente)</li>
+                        <li>Sicherheitsgrenzen: Kein Shell-Parsing, fester Timeout (30s), Memory/Output-Limits (max 50kB Output), Exitcode- & Traceback-Erfassung</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Task 2 -->
+            <div class="task-card" id="task-2">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-02</span>
+                        <span>workspace.symbols – Kompakte AST Repo-Map</span>
+                    </div>
+                    <span class="badge badge-done" id="status-2">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Löst das 8k-Kontext-Flaschenhals-Problem für kleine 4B-Modelle durch Generierung eines extrem kompakten Strukturüberblicks über Klassen, Funktionen und Methoden im Workspace.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li>Tool-Name: <code>workspace.symbols</code> (RiskLevel: <code>READ_ONLY</code>)</li>
+                        <li>Parameter: <code>path</code> (optional, default <code>"."</code>), <code>max_depth</code> (default 4)</li>
+                        <li>Funktionsweise: Pure Python <code>ast.walk</code> über <code>.py</code> Dateien; ignoriert <code>.venv</code>, <code>build</code>, <code>.git</code>. Liefert Zeilennummern, Klassen, Methoden und Argumente in < 500 Tokens.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Task 3 -->
+            <div class="task-card" id="task-3">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-03</span>
+                        <span>filesystem.grep & filesystem.find – Native Such-Tools</span>
+                    </div>
+                    <span class="badge badge-done" id="status-3">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Strukturierte JSON-basierte Dateisuche ohne anfälliges Shell-Quoting und ohne Bash-Syntaxfehler bei 4B-Modellen.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li><code>filesystem.grep</code>: Sucht Zeichenketten/Regex in Dateien; Parameter: <code>query</code>, <code>path</code>, <code>pattern</code>, <code>case_sensitive</code>.</li>
+                        <li><code>filesystem.find</code>: Sucht Dateien nach Glob-Mustern; Parameter: <code>pattern</code>, <code>path</code>, <code>max_depth</code>.</li>
+                        <li>Zero Shell Dependencies: Reines Standardbibliothek-Handling (<code>fnmatch</code>, <code>pathlib</code>).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Task 4 -->
+            <div class="task-card" id="task-4">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-04</span>
+                        <span>Sliding Observation Compaction & Context Pruning</span>
+                    </div>
+                    <span class="badge badge-done" id="status-4">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Verhindert Attention Decay und Kontextüberlauf bei längeren Multi-Turn-Aufgaben durch automatisches Einkürzen historischer Beobachtungen.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li>In <code>models.py</code>: Die jüngsten 2 Turns behalten ihren vollen Output.</li>
+                        <li>Ältere Datei-Lesungen oder große Outputs werden im Kontext für das Modell zu prägnanten Zusammenfassungen verdichtet (z. B. <code>[File content already observed: 120 lines - compacted for context preservation]</code>).</li>
+                        <li>Vollständige Details bleiben im Flight Recorder und in der JSONL-Audit-Trajectory unverändert erhalten.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Task 5 -->
+            <div class="task-card" id="task-5">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-05</span>
+                        <span>Workspace Snapshot & Rollback / Undo</span>
+                    </div>
+                    <span class="badge badge-done" id="status-5">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Schützt den Entwickler-Workspace vor unvollständigen, fehlerhaften oder abgebrochenen Änderungen des Agenten.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li>Modul <code>snapshot.py</code> mit <code>WorkspaceSnapshot</code>: Automatisches Tracking aller Datei-Mutationen.</li>
+                        <li>CLI-Flag <code>--rollback-on-failure</code>: Stellt den ursprünglichen Zustand wieder her, wenn der Lauf fehlschlägt oder abgelehnt wird.</li>
+                        <li>CLI-Befehl <code>lynx undo [RUN_ID]</code> zur nachträglichen Rückabwicklung von Dateimodifikationen aus dem Snapshot-Store.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Task 6 -->
+            <div class="task-card" id="task-6">
+                <div class="task-header">
+                    <div class="task-title">
+                        <span class="task-num">TASK-06</span>
+                        <span>Coding-Spezifischer System-Prompt & Guardrails</span>
+                    </div>
+                    <span class="badge badge-done" id="status-6">Abgeschlossen</span>
+                </div>
+                <div class="task-desc">
+                    Gezielte Ausrichtung des Prompts auf Qwen-3.5-4B für verlässliche Coding-Schritte und Vermeidung typischer Halluzinationen.
+                </div>
+                <div class="task-details">
+                    <strong>Spezifikation & Umsetzung:</strong>
+                    <ul>
+                        <li>Erweiterung des <code>SYSTEM_PROMPT</code> in <code>inference.py</code>:</li>
+                        <li>1. Lies oder greppe Dateien vor einem Patch; 2. Nutze ausreichend Kontextzeilen bei <code>filesystem.patch</code>; 3. Reagiere sofort auf <code>Diagnostic alerts</code>; 4. Verifiziere Änderungen mit <code>workspace.test</code> vor dem Finish.</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <footer class="footer">
+            Lynx Harness POC &bull; Standard Library Only &bull; Qwen3.5-4B First
+        </footer>
+    </div>
+</body>
+</html>

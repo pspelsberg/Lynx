@@ -1,0 +1,24 @@
+# Install as /etc/systemd/system/lynx-llama.service after foreground validation.
+[Unit]
+Description=Lynx llama.cpp ROCm server
+After=local-fs.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lynx
+EnvironmentFile=/opt/lynx/.env
+ExecStart=/opt/lynx/scripts/run-llama-rocm.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lynx/build /opt/lynx/data /opt/lynx/artifacts /opt/lynx/knowledge
+SupplementaryGroups=render video
+DeviceAllow=/dev/kfd rw
+DeviceAllow=/dev/dri/renderD128 rw
+DeviceAllow=/dev/dri/renderD129 rw
+
+[Install]
+WantedBy=multi-user.target

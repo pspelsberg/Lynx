@@ -1,0 +1,2409 @@
+Wenn ich einen Agent bauen möchte, also ein Agent Harness und ich würde gern weg von diesem ganzen, ja, es muss immer größer, weiter, besser die KI werden, sondern ich würde gern ein kleines, schnelles Modell haben, was auf meiner Grafikkarte ohne Problem läuft. Ich denke jetzt hier an so ein, weiß ich nicht, vier- oder maximal acht-B-Modell. Und der Agent Harness soll tatsächlich sowas wie Deep Research, Thinking Modus und vieles mehr anbieten, aber natürlich auch externe Tools über MCP, über CLI steuern können oder halt auch über Playwright. Der Punkt ist, dass ich auch gerade keine Ahnung habe, inwieweit ich ein kleines Modell fine-tunen sollte, damit es eben mehr oder weniger nur mit diesen Tools, sei es jetzt Deep Research, Web Search, Playwright oder halt auch die Tool Usage nutzt. Wie könnten wir das Ganze aufbauen?
+
+Ja — und ich glaube, genau da liegt ein ziemlich spannender Gegenentwurf zum aktuellen „mehr Parameter = mehr Agent“-Trend.
+
+Ich würde das Projekt unter eine Leitidee stellen:
+
+    Das Modell soll nicht der Agent sein. Das Harness ist der Agent.
+    Das Modell ist ein schneller Reasoning-/Routing-/Synthesis-Kern innerhalb eines deterministischen Systems.
+
+Gerade bei 4B–8B halte ich das für vielversprechender als zu versuchen, durch Fine-Tuning aus einem kleinen Modell einen Mini-Claude zu machen.
+1. Mein Startpunkt wäre tatsächlich Qwen3.5-4B
+
+Stand heute würde ich als ersten Kandidaten Qwen3.5-4B testen. Es hat 4B Parameter, 262k nativen Kontext, Thinking und Non-Thinking, Tool-Calling und eine dokumentierte MCP/Qwen-Agent-Integration. Außerdem lässt es sich über vLLM/SGLang OpenAI-kompatibel serven; bei vLLM gibt es sogar explizite Tool-Call- und Reasoning-Parser.
+
+Das Interessante ist aber ein Detail aus den Benchmarks: Qwen gibt für das 4B-Modell 50,3 auf BFCL-V4, 79,9 auf TAU2-Bench, aber nur 17,6 auf DeepPlanning an.
+
+Das ist für deine Idee fast die perfekte Ausgangslage:
+
+Tool benutzen? Relativ gut. Einen langen autonomen Plan im Kopf behalten? Deutlich schwächer.
+
+Also würde ich Deep Planning gerade nicht primär in das Modell trainieren, sondern ins Harness.
+
+Als zweite Benchmark-Referenz würde ich Ministral 3 8B Instruct 2512 dagegen laufen lassen. Mistral beschreibt es explizit als edge-optimiert mit nativer Function-Calling-/JSON-Unterstützung, 256k Kontext und Apache-2.0-Lizenz; FP8 soll in 12 GB VRAM passen, quantisiert entsprechend darunter.
+2. Ich würde den Agent ungefähr so schneiden
+
+                         ┌─────────────────────┐
+ User / API / TUI ──────►│   Session Manager   │
+                         └─────────┬───────────┘
+                                   │
+                         ┌─────────▼───────────┐
+                         │   Intent / Policy    │
+                         │       Router         │
+                         └─────────┬───────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              │                    │                    │
+        FAST / CHAT           THINK / PLAN       DEEP RESEARCH
+              │                    │                    │
+              └────────────────────┼────────────────────┘
+                                   ▼
+                          ┌──────────────────┐
+                          │   Local 4B LLM    │
+                          │ Qwen3.5-4B etc.  │
+                          └────────┬─────────┘
+                                   │
+                           structured actions
+                                   │
+                 ┌─────────────────▼─────────────────┐
+                 │            Tool Gateway            │
+                 │                                    │
+                 │ Tool discovery / permissions       │
+                 │ schemas / validation / retry       │
+                 │ output compression / observations  │
+                 └─────┬────────┬───────────┬─────────┘
+                       │        │           │
+                     MCP      CLI      Playwright
+                       │        │           │
+                    APIs     bash/git      Browser
+                       │
+                   Web/Search
+
+Aber ein entscheidendes Detail:
+Das Modell bekommt NICHT alle Tools.
+
+Das ist bei kleinen Modellen meiner Meinung nach einer der größten Hebel überhaupt.
+
+Wenn du einem 4B-Modell 70 MCP-Tools mit jeweils 300 Tokens JSON-Schema gibst, hast du ihm praktisch vor der eigentlichen Aufgabe schon eine kleine Klausur hingelegt.
+
+Selbst Mistral empfiehlt für sein 8B-Agentic-Modell ausdrücklich, die verfügbare Tool-Menge möglichst klein zu halten.
+
+Ich würde deshalb einen zweistufigen Tool Router bauen.
+
+User task
+   │
+   ▼
+Tool-family routing
+   │
+   ├── research
+   ├── browser
+   ├── filesystem
+   ├── shell
+   ├── git
+   ├── database
+   └── external MCP
+          │
+          ▼
+   retrieve top 3–8 tools
+          │
+          ▼
+        LLM
+
+Die Tool-Beschreibungen landen in einem kleinen Search-Index. Embedding/Keyword/Hybrid Search reicht wahrscheinlich völlig.
+
+Das Modell sieht dann vielleicht:
+
+web.search
+web.fetch
+browser.open
+browser.click
+browser.snapshot
+
+statt 97 Funktionen.
+3. Noch radikaler: „Skills“ statt Tools
+
+Hier würde ich mir einiges von Coding Agents abschauen.
+
+Interessanterweise ist mini-swe-agent inzwischen absichtlich extrem simpel: linearer Verlauf und im Kern nur Bash anstelle eines riesigen Function-Calling-Systems.
+
+Und Microsoft macht bei Playwright inzwischen eine ähnliche Unterscheidung: Playwright CLI wird für Coding Agents als token-effizienter beschrieben, während Playwright MCP stärker für explorative, zustandsbehaftete Agent-Loops gedacht ist.
+
+Deshalb würde ich drei Ebenen unterscheiden:
+
+Primitive
+    browser.click(...)
+    shell.exec(...)
+    web.search(...)
+
+Skill
+    research_company(...)
+    inspect_web_app(...)
+    debug_test_failure(...)
+    compare_products(...)
+
+Workflow
+    deep_research(...)
+    implement_issue(...)
+    analyze_repository(...)
+
+Ein kleines Modell arbeitet meiner Einschätzung nach erheblich besser mit 15 guten Skills als mit 150 atomaren Tools.
+
+Das Harness expandiert intern:
+
+research_topic("Local inference market 2026")
+
+zu:
+
+search
+→ inspect results
+→ fetch sources
+→ extract claims
+→ search gaps
+→ fetch primary sources
+→ compare contradictions
+→ synthesize
+→ citation check
+
+Das Modell muss diesen Boilerplate-Prozess gar nicht jedes Mal neu erfinden.
+4. „Deep Research“ würde ich als State Machine implementieren
+
+Das ist für mich der wichtigste Punkt.
+
+Nicht:
+
+Prompt:
+"Research this deeply. Think hard."
+
+Sondern tatsächlich:
+
+RESEARCH_TASK
+
+1. Clarify goal
+2. Generate research questions
+3. Search broadly
+4. Rank sources
+5. Read sources
+6. Extract evidence
+7. Identify contradictions
+8. Identify missing evidence
+9. Search again
+10. Produce synthesis
+11. Verify claims
+12. Produce cited answer
+
+Und der State liegt außerhalb des LLMs:
+
+{
+  "question": "...",
+  "subquestions": [],
+  "sources": [],
+  "claims": [],
+  "evidence": [],
+  "contradictions": [],
+  "open_questions": [],
+  "confidence": {}
+}
+
+Damit muss dein 4B-Modell nicht erinnern:
+
+    „Moment, was hatte Quelle Nummer 8 vor 14 Tool Calls nochmal gesagt?“
+
+Das Harness weiß es.
+
+Ich würde sogar eine kleine Evidence-Datenstruktur einführen:
+
+Claim
+├── claim
+├── source_id
+├── evidence
+├── supports | contradicts
+├── confidence
+├── published_at
+└── retrieved_at
+
+Dann wird Deep Research eher zu einem Informationsverarbeitungssystem mit einem LLM darin als zu einem riesigen LLM-Prompt.
+
+Genau das finde ich für kleine Modelle spannend.
+5. „Thinking Mode“ würde ich ebenfalls ins Harness ziehen
+
+Du könntest dem Nutzer drei Modi anbieten:
+
+Fast
+Think
+Research
+
+Aber intern heißt das nicht unbedingt drei Modelle.
+Fast
+
+Qwen3.5-4B
+thinking = false
+max_steps = 3
+tool_budget = 2
+
+Think
+
+Qwen3.5-4B
+thinking = true
+max_steps = 8
+
+PLAN
+→ EXECUTE
+→ CHECK
+→ ANSWER
+
+Research
+
+Research state machine
+
+max_searches = 12
+max_sources = 20
+max_iterations = 4
+
+PLAN
+→ SEARCH
+→ READ
+→ GAP ANALYSIS
+→ SEARCH
+→ SYNTHESIS
+→ FACT CHECK
+
+Qwen3.5 denkt standardmäßig und kann über API-Konfiguration auch in einen Non-Thinking-Modus versetzt werden.
+
+Das Schöne daran:
+
+Thinking wird ein Compute-Budget.
+
+Nicht eine mystische Modellfähigkeit.
+6. Ich würde Tool Calls komplett normalisieren
+
+MCP, CLI und Playwright sollten für das Modell möglichst gleich aussehen.
+
+Zum Beispiel intern:
+
+class Tool:
+    name: str
+    description: str
+    input_schema: dict
+    risk: RiskLevel
+
+    async def execute(self, args) -> Observation:
+        ...
+
+Dann Adapter:
+
+MCPToolAdapter
+ShellToolAdapter
+PlaywrightToolAdapter
+HTTPToolAdapter
+PythonToolAdapter
+
+Und das Modell kennt ausschließlich:
+
+{
+  "tool": "browser.click",
+  "arguments": {
+    "ref": "e12"
+  }
+}
+
+Das Gateway entscheidet, ob daraus
+
+MCP
+
+oder
+
+playwright-cli click e12
+
+oder eine Library-Funktion wird.
+
+Das entkoppelt dein Modell vollständig vom Transport.
+
+Das ist später fürs Fine-Tuning Gold wert.
+7. Playwright würde ich ebenfalls zweigleisig fahren
+
+Microsoft Playwright MCP arbeitet primär über Accessibility-Snapshots statt Pixeln; typische Snapshots liegen laut Dokumentation im Bereich einiger hundert Tokens.
+
+Für einen kleinen Agenten ideal.
+
+Ich würde aber unterscheiden:
+
+Browser exploration
+→ Playwright MCP
+
+Coding agent / repetitive browser actions
+→ Playwright CLI
+
+Visual understanding notwendig
+→ screenshot → vision model
+
+Qwen3.5-4B hat sogar einen Vision Encoder.
+
+Du könntest also lokal gelegentlich Screenshots analysieren, ohne dass Vision der normale Browserpfad sein muss.
+
+Das spart massiv Tokens und GPU-Zeit.
+8. Beim Fine-Tuning würde ich zunächst: gar nichts tun
+
+Hier würde ich dich wirklich bremsen.
+
+Ich vermute, dass du mit Fine-Tuning am Anfang vor allem Harness-Probleme in Modellgewichte einbrennen würdest.
+
+Erst eine Baseline bauen.
+
+Nehmen wir 500 Testaufgaben:
+
+100 no-tool questions
+100 single-tool tasks
+100 multi-tool tasks
+50 browser tasks
+50 CLI tasks
+50 research tasks
+50 adversarial/error tasks
+
+Dann misst du beispielsweise:
+
+tool_selection_accuracy
+argument_accuracy
+unnecessary_tool_calls
+tool_hallucination_rate
+retry_success
+task_success
+citation_correctness
+research_coverage
+steps_per_task
+tokens_per_task
+wall_clock_time
+
+BFCL ist hierfür ebenfalls ein sinnvoller externer Benchmark; BFCL V4 bewertet mittlerweile nicht nur einzelne Function Calls, sondern auch Multi-Turn- und agentische Tool-Szenarien.
+
+Erst wenn du weißt, woran dein Agent scheitert, würde ich tunen.
+9. Und dann würde ich sehr gezielt fine-tunen
+
+Nicht:
+
+    „Mach Qwen besser in Agentic AI.“
+
+Sondern z. B.:
+Tool decision
+
+Trainieren:
+
+Need tool?
+YES / NO
+
+Tool selection
+
+User intent
++ 6 candidate tools
+→ correct tool
+
+Argument construction
+
+tool schema
++ user request
+→ valid arguments
+
+Tool result handling
+
+observation
+→ success / retry / alternative / done
+
+Agent control
+
+current state
+→ next action
+
+Genau darauf würde ich einen kleinen LoRA/QLoRA setzen.
+
+Nicht auf Weltwissen.
+
+Nicht auf Web-Inhalte.
+
+Nicht auf bestimmte Webseiten.
+
+Und möglichst auch nicht auf feste MCP-Toolnamen.
+
+Stattdessen abstrakte Verhaltensmuster.
+10. Dein Trainingsformat könnte extrem wertvoll werden
+
+Zum Beispiel:
+
+{
+  "state": {
+    "goal": "Find current GPU price",
+    "known": [],
+    "available_tools": [
+      "web.search",
+      "web.fetch",
+      "calculator"
+    ]
+  },
+  "action": {
+    "type": "tool",
+    "tool": "web.search",
+    "args": {
+      "query": "..."
+    }
+  }
+}
+
+Dann:
+
+{
+  "state": {
+    "goal": "...",
+    "observations": [...]
+  },
+  "action": {
+    "type": "reflect",
+    "reason": "Current source is a reseller; find primary source."
+  }
+}
+
+Und irgendwann:
+
+{
+  "action": {
+    "type": "finish"
+  }
+}
+
+Das ist eigentlich eine sehr schöne Form von policy distillation.
+
+Du könntest hochwertige Trajectories von einem stärkeren Teacher-Modell erzeugen und anschließend dein 4B-Modell darauf trainieren.
+
+Aber wichtig:
+
+Nicht jede Teacher-Trajectory übernehmen.
+
+Lieber automatisch erfolgreiche Trajectories validieren und nur die guten verwenden.
+11. Ein interessanter Trick wäre sogar ein zweites winziges Modell
+
+Ich würde testen:
+
+Qwen3.5-4B
+= reasoning + answer generation
+
+FunctionGemma 270M
+= tool router
+
+Google hat FunctionGemma tatsächlich genau dafür gebaut: eine spezialisierte 270M-Gemma-Variante für Function Calling.
+
+Dann könnte deine Pipeline sein:
+
+User
+ ↓
+270M Tool Router
+ ↓
+[no tool] ───────────► Qwen 4B
+ ↓
+tool category
+ ↓
+retrieve 5 tools
+ ↓
+Qwen 4B selects + executes
+
+Ich würde das nicht zwingend sofort bauen — aber benchmarken würde ich es definitiv.
+
+Es könnte absurd schnell sein.
+12. Context Management ist wahrscheinlich wichtiger als Long Context
+
+Ich würde mich von den 262k überhaupt nicht verführen lassen.
+
+Für einen kleinen Agenten:
+
+    Long context available ≠ long context desirable.
+
+Statt Conversation History:
+
+40000 tokens
+
+lieber:
+
+SYSTEM                   1000
+TASK                      500
+WORKING STATE            1000
+RELEVANT MEMORY          1500
+AVAILABLE TOOLS          1500
+LATEST OBSERVATIONS      2000
+-----------------------------
+~7500 tokens
+
+Alte Tool-Ausgaben kommen ins Artifact Store.
+
+artifact://research/42/source/17
+artifact://browser/session/3/snapshot/22
+artifact://shell/run/183
+
+Das Modell bekommt nur Zusammenfassungen und kann bei Bedarf gezielt zurücklesen.
+
+Das verbessert gleichzeitig:
+
+    Geschwindigkeit
+
+    KV-Cache-Verbrauch
+
+    Attention-Qualität
+
+    Tool-Auswahl
+
+    Reproduzierbarkeit.
+
+13. Sicherheitsarchitektur würde ich von Anfang an einbauen
+
+Besonders bei CLI + MCP + Browser.
+
+Ich würde vier Tool-Level definieren:
+
+L0  read-only
+    search, fetch, ls, cat
+
+L1  local mutation
+    write file, git checkout
+
+L2  external mutation
+    submit form, send request, git push
+
+L3  dangerous
+    shell root, credentials, delete, purchases
+
+Und dazu:
+
+allow
+confirm
+deny
+
+Das passt auch zur MCP-Philosophie: Tool-Aufrufe sollen Sicherheits- und Consent-Grenzen respektieren.
+
+Noch eine aktuelle Architekturentscheidung: In der MCP-Spezifikation vom 28. Juli 2026 wurde der Protokollkern stateless; außerdem werden u. a. MCP Sampling, Roots und Logging für neue Implementierungen nicht mehr empfohlen. Für dein Harness würde ich deshalb MCP primär als Tool-/Resource-Transport nutzen und die eigentlichen LLM-Calls direkt in deinem Host kontrollieren.
+
+Das passt perfekt zu deinem Vorhaben.
+14. Mein MVP wäre überraschend klein
+
+Ich würde noch kein LangGraph/LangChain-Monster bauen.
+
+Eher:
+
+Python
+├── FastAPI
+├── pydantic
+├── asyncio
+├── SQLite
+├── vLLM
+├── MCP Python SDK
+└── Playwright CLI/MCP
+
+Struktur etwa:
+
+agent/
+├── core/
+│   ├── loop.py
+│   ├── state.py
+│   ├── router.py
+│   └── budgets.py
+│
+├── models/
+│   ├── qwen.py
+│   └── inference.py
+│
+├── tools/
+│   ├── registry.py
+│   ├── gateway.py
+│   ├── mcp.py
+│   ├── shell.py
+│   ├── browser.py
+│   └── search.py
+│
+├── skills/
+│   ├── web_research.py
+│   ├── browser_task.py
+│   └── coding.py
+│
+├── research/
+│   ├── planner.py
+│   ├── evidence.py
+│   ├── verifier.py
+│   └── workflow.py
+│
+├── memory/
+│   ├── working.py
+│   ├── artifacts.py
+│   └── retrieval.py
+│
+└── evals/
+    ├── tool_use/
+    ├── browser/
+    └── research/
+
+Der zentrale Agent Loop könnte konzeptionell wirklich nur sein:
+
+while budget.remaining:
+
+    context = build_context(state)
+
+    tools = tool_router.retrieve(
+        task=state.goal,
+        k=6
+    )
+
+    decision = model.act(
+        context=context,
+        tools=tools,
+        thinking=budget.thinking
+    )
+
+    if decision.type == "tool":
+        observation = await gateway.execute(decision)
+        state.observe(observation)
+
+    elif decision.type == "reflect":
+        state.update(decision)
+
+    elif decision.type == "finish":
+        return decision.answer
+
+Das ist der Kern.
+
+Deep Research, Browser Agent usw. sind dann Policies um diesen Loop herum, nicht neue Agentenframeworks.
+Und hier wäre mein Vorgehen in vier Phasen
+Phase	Ziel
+1 – Harness	Qwen3.5-4B unverändert, 10–15 Tools, Tool Router, structured output
+2 – Agent Skills	Research, Browser, Coding als deterministische Workflows
+3 – Evals	Eigene 500–2000 Task Suite + BFCL
+4 – Fine-Tuning	LoRA nur auf tatsächlich beobachtete Fehlerklassen
+
+Und erst danach würde ich überlegen, ob das Fine-Tuning vielleicht sogar einen Schritt weitergeht:
+
+    Nicht das Modell auf deine Tools fine-tunen — sondern das Modell auf deine Agent-State-Machine fine-tunen.
+
+Das finde ich wesentlich interessanter.
+
+Dann lernt dein 4B-Modell nicht:
+
+"Wie rufe ich Playwright auf?"
+
+sondern:
+
+observe → decide → act → verify → recover → finish
+
+Und damit könnte dasselbe Modell morgen völlig andere MCP-Tools bedienen.
+
+Der Advocatus-Diaboli-Punkt dabei ist: Ich würde dein Projekt nicht daran messen, ob ein 4B-Modell die gleiche „Intelligenz“ wie ein 70B-Modell entwickelt. Das wird sehr wahrscheinlich frustrieren.
+
+Ich würde die Forschungsfrage anders formulieren:
+
+    Wie wenig Intelligenz muss im Modell selbst stecken, wenn Umgebung, Werkzeuge, Zustand, Suche, Verifikation und Planung hervorragend konstruiert sind?
+
+Das ist meines Erachtens die viel interessantere Architekturfrage. Und die Qwen-Benchmarks mit gutem Tool-Verhalten bei deutlich schwächerem Deep Planning sind fast schon ein Hinweis darauf, dass genau dieser Ansatz funktionieren könnte.
+
+Wenn ich das selbst als Experiment anfangen würde, wäre mein erster Build daher Qwen3.5-4B Q4/Q5 + vLLM/SGLang + eigener ~300-Zeilen-Agent-Core + MCP Tool Gateway + Playwright CLI + Research State Machine, komplett ohne Fine-Tuning. Danach würde ich systematisch Trajectories sammeln. Das Fine-Tuning wäre Output des Harness-Projekts, nicht dessen Voraussetzung.
+
+Ja. Und mit RLM + OKF + Skill-Evolution + persistentem Python-Kernel wird aus dem Ganzen langsam nicht mehr nur ein Agent Harness, sondern eher ein kleines Agent Operating System.
+
+Ich würde dabei aber eine sehr wichtige Grenze ziehen: Das System darf selbst Vorschläge für neues Wissen und neue Skills erzeugen, aber es darf diese nicht ungeprüft zu seiner eigenen Wahrheit machen. Sonst hast du nach ein paar Wochen einen sehr selbstbewussten kleinen Irren auf der Grafikkarte. 🙂
+1. RLM würde ich unbedingt einbauen – aber nicht überall
+
+Mit RLM meinst du ziemlich genau die Ende 2025 vorgestellten Recursive Language Models: Der lange Kontext wird nicht komplett ins Modell gestopft, sondern als externe Umgebung behandelt. Das LLM schreibt bzw. nutzt Code, um relevante Ausschnitte zu untersuchen, Aufgaben zu zerlegen und sich rekursiv auf Teilmengen aufzurufen. Die Autoren berichten sogar über Aufgaben bis weit jenseits des eigentlichen Context Windows.
+
+Wichtig dabei:
+
+RLM spart nicht garantiert insgesamt Tokens.
+
+Es spart vor allem:
+
+    wiederholte riesige Input-Kontexte,
+
+    irrelevanten Kontext,
+
+    Attention über Müll,
+
+    KV-Cache.
+
+Dafür entstehen zusätzliche kleine Inference-Calls.
+
+Für unser 4B-Modell ist das aber ziemlich attraktiv.
+
+Statt:
+
+SYSTEM
++ 160k Dokument
++ Frage
+→ Modell
+
+machen wir:
+
+Question
+   ↓
+RLM controller
+   ↓
+inspect metadata / headings / index
+   ↓
+select chunks
+   ↓
+recursive calls on relevant chunks
+   ↓
+merge partial findings
+   ↓
+verify
+   ↓
+answer
+
+Gerade bei einem kleinen Modell ist das wahrscheinlich besser, weil wir ihm immer nur kleine, hochrelevante Arbeitsräume geben.
+2. Und daraus würde ich direkt einen Recursive Agent Harness machen
+
+Das ist lustigerweise inzwischen sogar ein eigener Forschungsansatz: Recursive Agent Harnesses (RAH).
+
+Dabei ruft nicht bloß das LLM rekursiv das LLM auf, sondern ein Agent kann kleinere vollständige Harness-Instanzen starten, inklusive Filesystem, Codeausführung und Tools. In einer aktuellen Arbeit wurde damit bei gleichem Backbone ein deutlicher Gewinn gegenüber dem einfachen Coding-Agent-Harness gemessen.
+
+Für uns könnte das aussehen wie:
+
+MAIN AGENT
+│
+├── Subtask: inspect codebase
+│      └── mini harness
+│           ├── filesystem
+│           ├── ripgrep
+│           └── python
+│
+├── Subtask: research API
+│      └── mini harness
+│           ├── web
+│           └── browser
+│
+└── Subtask: verify hypothesis
+       └── mini harness
+            ├── python
+            └── tests
+
+Aber mit einem entscheidenden Unterschied:
+Jeder Child-Agent bekommt ein extrem kleines Budget.
+
+Zum Beispiel:
+
+Parent
+budget = 20k generated tokens
+
+Child 1
+budget = 2k
+
+Child 2
+budget = 2k
+
+Child 3
+budget = 1k
+
+Und die Kinder bekommen nicht den gesamten Parent-Kontext.
+
+Nur:
+
+goal
+relevant artifacts
+relevant knowledge
+allowed tools
+expected output schema
+
+Damit wird Rekursion tatsächlich effizient.
+3. OKF würde ich zum „langfristigen Gehirn“ machen
+
+Und ja: Das Google-Format, das du meinst, ist Open Knowledge Format (OKF).
+
+Inzwischen ist die offizielle Spezifikation bereits bei OKF v0.2. Das Grundprinzip ist herrlich unspektakulär:
+
+    Verzeichnisse + Markdown + YAML Frontmatter.
+
+Keine proprietäre Datenbank nötig. Kein gigantisches Schema. Git-fähig und sowohl für Menschen als auch Agents lesbar.
+
+Und v0.2 ist für unseren Use Case besonders interessant, weil Google Provenance, Verification, Lifecycle und Trust explizit ergänzt hat. Ein Concept kann beispielsweise festhalten, woher Wissen stammt, wer es erzeugt und wer es überprüft hat.
+
+Ich würde unsere Memory-Architektur deshalb in vier komplett unterschiedliche Speicherarten zerlegen:
+
+                  AGENT MEMORY
+                       │
+       ┌───────────────┼──────────────────┐
+       │               │                  │
+       ▼               ▼                  ▼
+   Working         Episodic           Semantic
+   Memory           Memory            Knowledge
+                                           │
+                                           ▼
+                                           OKF
+
+                       +
+                       │
+                       ▼
+                  Procedural
+                    Memory
+                       │
+                       ▼
+                    Skills
+
+Working Memory
+
+Nur für den aktuellen Run.
+
+goal
+current plan
+latest observations
+open questions
+
+Vielleicht 4–8k Tokens.
+Episodic Memory
+
+Was ist passiert?
+
+2026-08-28
+Task X
+Tried A
+Failed because B
+Solution C worked
+
+Das ist dein Trajectory Store.
+Semantic Knowledge
+
+Was wissen wir?
+
+knowledge/
+├── python/
+├── qwen/
+├── mcp/
+├── projects/
+└── web/
+
+Als OKF.
+Procedural Memory
+
+Wie machen wir Dinge?
+
+skills/
+├── inspect-python-project/
+├── research-library-version/
+├── debug-playwright-login/
+└── compare-api-documentation/
+
+Das sind Skills.
+
+Diese Trennung halte ich für extrem wichtig.
+4. OKF + Web könnte richtig stark werden
+
+Nehmen wir eine Frage:
+
+    Welche MCP-Version unterstützt Feature X?
+
+Agent fragt zuerst den Knowledge Store.
+
+knowledge search
+       ↓
+OKF result
+       ↓
+last verified: 2026-04-12
+       ↓
+knowledge possibly stale
+
+Dann:
+
+web search
+→ primary source
+→ compare
+→ update knowledge candidate
+
+Der Agent könnte danach einen Knowledge-Patch erzeugen:
+
+---
+type: Reference
+title: MCP Protocol Feature X
+sources:
+  - id: mcp-spec
+    resource: https://...
+generated:
+  by: agent/qwen3.5-4b
+  at: ...
+verified:
+  - by: process:web-source-verifier
+    at: ...
+status: stable
+---
+
+OKF v0.2 unterscheidet dabei tatsächlich zwischen generated und verified; außerdem lassen sich Quellen explizit über sources festhalten.
+
+Das ist perfekt für einen Agenten.
+
+Denn wir müssen ihm dann keinen eigenen schwammigen confidence: 0.87-Wert glauben.
+
+Google vermeidet in OKF sogar bewusst einen universellen Credibility Score und speichert stattdessen überprüfbare Signale über Quellen und Verifikation.
+
+Das würde ich genauso übernehmen.
+5. Dann brauchen wir einen Knowledge Lifecycle
+
+Ich würde das nicht einfach machen:
+
+Agent learned fact
+→ write OKF
+
+Sondern:
+
+                discovered
+                    │
+                    ▼
+            knowledge candidate
+                    │
+           ┌────────┴────────┐
+           │                 │
+        verify             reject
+           │
+           ▼
+        staging
+           │
+     contradiction check
+           │
+           ▼
+        stable OKF
+
+Und später:
+
+stable
+   │
+   ├── still valid → refresh verified timestamp
+   │
+   ├── changed → regenerate
+   │
+   └── obsolete → deprecated
+
+Damit baut sich langsam eine lokale, kuratierte Wiki des Agenten auf.
+
+Der Web Search wird dadurch mit der Zeit billiger.
+
+Am Anfang:
+
+query
+→ 8 web calls
+
+Später:
+
+query
+→ OKF
+→ one freshness check
+
+Genau da sehe ich einen erheblichen Effizienzgewinn.
+6. Self-Improvement würde ich analog dazu als Skill Lifecycle bauen
+
+Und hier würde ich noch viel strenger sein.
+
+Nicht:
+
+Agent discovers technique
+→ creates executable skill
+→ runs it forever
+
+Bitte nicht. 😄
+
+Sondern:
+
+TRAJECTORIES
+     │
+     ▼
+Pattern Miner
+     │
+     ▼
+Skill Candidate
+     │
+     ▼
+Generate tests
+     │
+     ▼
+Replay Evaluation
+     │
+     ├── worse → reject
+     │
+     └── better
+            │
+            ▼
+         staging
+            │
+         A/B eval
+            │
+            ▼
+         promote
+
+Das ist meiner Meinung nach der eigentliche Self-Improvement Loop.
+7. Dafür zeichnen wir jede Agent-Trajectory auf
+
+Nicht nur Chatlogs.
+
+Sondern strukturiert:
+
+{
+  "task_type": "web_research",
+  "strategy": "verified_reasoning",
+  "steps": [
+    "...",
+    "..."
+  ],
+  "tools": [
+    "web.search",
+    "web.fetch"
+  ],
+  "outcome": "success",
+  "verification": {
+    "passed": true
+  },
+  "cost": {
+    "input_tokens": 8200,
+    "output_tokens": 3100,
+    "tool_calls": 7,
+    "wall_ms": 12400
+  }
+}
+
+Dann kann unser Agent irgendwann feststellen:
+
+    Bei GitHub-Recherche mache ich immer Search → GitHub HTML → README. Direkter git clone --depth=1 + ripgrep war in 34 von 39 Fällen schneller und genauer.
+
+Boom.
+
+Jetzt entsteht ein Skill Candidate.
+8. Ein Skill sollte mehr sein als ein Prompt
+
+Ich würde ein Skill-Format ungefähr so gestalten:
+
+skills/
+└── inspect-github-repository/
+    ├── SKILL.md
+    ├── skill.yaml
+    ├── run.py
+    ├── tests/
+    │   ├── case_01.yaml
+    │   └── case_02.yaml
+    └── metrics.json
+
+skill.yaml:
+
+name: inspect-github-repository
+version: 3
+status: stable
+
+applies_when:
+  - repository_analysis
+  - code_search
+
+tools:
+  - git
+  - rg
+  - filesystem
+
+risk: read_only
+
+metrics:
+  success_rate: 0.93
+  average_tokens: 1840
+
+Das LLM sieht meistens nur:
+
+inspect-github-repository
+
+Use when detailed repository inspection is required.
+
+Erst wenn es den Skill auswählt, wird die vollständige Definition geladen.
+
+Wieder Tokens gespart.
+9. Und jetzt wird es spannend: Skills können miteinander konkurrieren
+
+Angenommen wir haben:
+
+research-web-v1
+research-web-v2
+research-web-v3
+
+Dann können wir bei geeigneten Tasks experimentieren:
+
+10 % → v2
+10 % → v3
+80 % → best-known
+
+Und messen:
+
+correctness
+verification rate
+tokens
+wall time
+tool calls
+
+Dann haben wir echte Evolution unter einem Fitness-Kriterium.
+
+Nicht:
+
+    Das LLM glaubt, dass sein neuer Skill besser ist.
+
+Sondern:
+
+    Der neue Skill schlägt auf unserem Evalset den bisherigen Skill.
+
+Das ist für mich Self-Improvement, dem ich tatsächlich trauen würde.
+
+Dass Skill Libraries ein sinnvoller Mechanismus für selbstverbessernde Agenten sein können, ist inzwischen auch ein aktives Forschungsfeld; beispielsweise untersucht SAGE genau Skill Libraries plus systematisches Lernen/Validieren.
+10. Den Python-Kernel würde ich ebenfalls zu einer Kernfähigkeit machen
+
+Sogar sehr.
+
+Ich würde nicht jedes Mal:
+
+python -c "..."
+
+starten.
+
+Sondern einen warmen persistenten Kernel Pool.
+
+Agent
+  │
+  ▼
+Python Tool
+  │
+  ▼
+Kernel Manager
+  │
+  ├── kernel-session-1
+  ├── kernel-session-2
+  └── kernel-session-3
+
+Dann kann der Agent:
+
+data = ...
+
+und im nächsten Call:
+
+result = transform(data)
+
+ohne alles neu aufzubauen.
+
+Für RLM ist das besonders interessant.
+
+Denn das Modell könnte etwa bekommen:
+
+context = load_artifact("huge_document.txt")
+
+headings = extract_headings(context)
+
+relevant = search(
+    context,
+    terms=["MCP", "authentication"]
+)
+
+und anschließend nur:
+
+relevant[2]
+relevant[7]
+relevant[12]
+
+rekursiv an sich selbst schicken.
+
+Das ist ziemlich genau die Art von external context environment, die RLM attraktiv macht.
+11. Ich würde Python aber niemals als echte Security Sandbox behandeln
+
+Das ist ein wichtiger Architekturpunkt.
+
+Nicht:
+
+exec(llm_generated_code)
+
+im Harness-Prozess.
+
+Sondern:
+
+Harness
+   │
+   ▼
+Kernel Worker
+   │
+   ▼
+Sandbox
+
+Beispielsweise isoliert über Container/Namespaces/VM entsprechend der Plattform.
+
+Je Skill:
+
+network: false
+filesystem: workspace-only
+cpu: 2
+memory: 1GB
+timeout: 30s
+
+Und für Web-Python:
+
+network: allowlisted
+
+Der Agent darf Code generieren.
+
+Der Agent darf nicht entscheiden, welche Security Boundary der Code bekommt.
+
+Das entscheidet das Harness.
+12. Und jetzt Python vs Rust
+
+Hier würde ich dir tatsächlich etwas widersprechen:
+
+    Wenn das Modell 100+ Tokens/s schafft, bedeutet das nicht automatisch, dass wir das Harness in einer Assembly-nahen Sprache schreiben müssen.
+
+Ein Token braucht selbst bei:
+
+150 tok/s
+
+immer noch etwa:
+
+6.7 ms
+
+Ein vernünftiger Python-Dictionary-Lookup oder State-Machine-Step liegt Größenordnungen darunter.
+
+Auch viele unserer Tools brauchen:
+
+Web request        50–1000 ms
+browser action     20–500 ms
+LLM call           Sekunden
+process execution  ms+
+
+Die paar Mikrosekunden Python-Overhead spielen praktisch keine Rolle.
+
+Und bei vLLM ist Python ohnehin primär die Steuerungsschicht; die eigentliche GPU-Arbeit passiert tiefer im Stack. vLLM lässt sich inzwischen einfach als eigener OpenAI-kompatibler Inference Server betreiben.
+
+Deshalb würde ich nicht aus Performancegründen sofort alles in Rust schreiben.
+13. Trotzdem sehe ich Rust in unserem Projekt
+
+Aber aus anderen Gründen:
+Python ist besser für
+
+    LLM-Experimente
+
+    RLM
+
+    Evals
+
+    Training
+
+    Embeddings
+
+    Datenanalyse
+
+    Python Kernel
+
+    schnelles Prototyping.
+
+Rust ist besser für
+
+    Scheduler
+
+    Prozessmanagement
+
+    Sandbox-/Tool-Gateway
+
+    parallele Child Agents
+
+    robuste State Machines
+
+    Streaming
+
+    Resource Limits
+
+    CLI
+
+    langlebigen Daemon
+
+    vorhersehbare Latenz.
+
+Und MCP hat mittlerweile sogar ein offizielles Rust SDK. Allerdings ist Rust aktuell noch Tier 2, während Python, TypeScript, Go und C# Tier 1 sind; der Rust-SDK unterstützt die aktuelle MCP-Spezifikation trotzdem bereits.
+
+Das spricht für einen Hybrid.
+14. Meine Zielarchitektur wäre deshalb langfristig
+
+                     ┌─────────────────────────┐
+                     │       User / CLI         │
+                     └────────────┬────────────┘
+                                  │
+                         Unix Socket / IPC
+                                  │
+                                  ▼
+                ┌──────────────────────────────────┐
+                │          HARNESSD / RUST          │
+                │                                   │
+                │ Scheduler                         │
+                │ Budgets                           │
+                │ State machine                     │
+                │ Tool routing                      │
+                │ Security policies                 │
+                │ MCP gateway                       │
+                │ Child processes                   │
+                │ Artifact management               │
+                │ Event log                         │
+                └───┬──────────┬───────────┬────────┘
+                    │          │           │
+             ┌──────▼───┐ ┌────▼─────┐ ┌──▼─────────┐
+             │ LLM      │ │ Python   │ │ Playwright │
+             │ Server   │ │ Kernels  │ │ / CLI      │
+             └──────┬───┘ └──────────┘ └────────────┘
+                    │
+                 CUDA/GPU
+
+                ┌───────────────────────────┐
+                │      KNOWLEDGE LAYER      │
+                │                           │
+                │ OKF                       │
+                │ Embedding index           │
+                │ Episodic trajectories     │
+                │ Skill library             │
+                │ Artifact store            │
+                └───────────────────────────┘
+
+Aber ich würde diesen Rust-Core nicht als erstes schreiben.
+15. V1 würde ich komplett Python bauen
+
+Sehr bewusst.
+
+Python
+│
+├── asyncio
+├── pydantic
+├── sqlite
+├── vLLM API
+├── MCP
+├── Playwright
+├── jupyter_client / kernel worker
+└── OKF filesystem
+
+Und schon beim Design Interfaces verwenden wie:
+
+class Scheduler: ...
+
+class ToolGateway: ...
+
+class KnowledgeStore: ...
+
+class ArtifactStore: ...
+
+class InferenceBackend: ...
+
+class KernelBackend: ...
+
+Dann messen wir.
+
+Wenn Profiling irgendwann zeigt:
+
+LLM inference       43 %
+web/browser         31 %
+Python kernels      14 %
+harness overhead     1 %
+other               11 %
+
+würde eine Rust-Neuentwicklung ziemlich wenig bringen.
+
+Wenn unser RAH aber irgendwann:
+
+100 concurrent subagents
+1000 tool events/s
+50 MCP connections
+
+fährt und wir sehen:
+
+harness overhead = 18 %
+
+dann ziehen wir Scheduler + Tool Gateway nach Rust.
+16. Eigentlich würde ich sogar von Anfang an eine Prozessgrenze setzen
+
+Das ist der Trick.
+
+Der LLM Server ist:
+
+localhost:8000
+
+Python Kernel ist:
+
+local IPC
+
+Browser ist:
+
+Playwright process
+
+MCP ist ohnehin ein Protokoll.
+
+Damit ist es später völlig egal, ob unser Hauptprozess
+
+Python
+
+oder
+
+Rust
+
+ist.
+
+Der Harness könnte V1 Python sein und V3 Rust, ohne dass wir die anderen Komponenten ändern.
+17. Damit hätten wir plötzlich fünf verschiedene Wege, „intelligenter“ zu werden
+
+Und das gefällt mir an diesem Design besonders.
+
+Unser Agent verbessert sich nicht nur über neue Modellgewichte.
+
+Er hat:
+
+MODEL INTELLIGENCE
+Qwen 4B
+        │
+        ├── Test-time compute
+        │    generate / critique / verify
+        │
+        ├── RLM / RAH
+        │    recursive decomposition
+        │
+        ├── Knowledge
+        │    OKF + web verification
+        │
+        ├── Skills
+        │    procedural learning
+        │
+        └── Tools
+             Python / Web / Browser / CLI
+
+Damit kann dasselbe unveränderte 4B-Modell über Wochen faktisch leistungsfähiger werden, weil seine Umgebung besser wird.
+
+Und genau diesen Effekt würde ich bevorzugen gegenüber ständigem Fine-Tuning.
+Die Architektur, auf die ich aktuell zielen würde
+
+Ich würde inzwischen diese Schichten definieren:
+Layer	Aufgabe
+Inference	lokales 4B/8B
+Reasoning Engine	Fast / Think / Best-of-N / RLM / RAH
+Verifier	Web, Tests, Python, Browser
+Tool Fabric	MCP / CLI / Playwright
+Kernel Fabric	persistente sandboxed Python-Kernel
+Context Engine	Retrieval + RLM + Artifacts
+Knowledge	OKF v0.2
+Memory	Episodic Trajectories
+Skills	versionierte procedural capabilities
+Evolution	mine → propose → test → promote
+Governance	Permissions + Sandbox + Audit
+Evals	Qualität / Token / Latenz / Erfolg
+
+Der vielleicht wichtigste Mechanismus wäre dabei ein globaler ComputeBudget.
+
+Nicht nur:
+
+max_tokens
+
+sondern:
+
+budget:
+  llm_tokens: 20000
+  recursive_calls: 8
+  parallel_branches: 3
+
+  web_calls: 6
+  browser_actions: 20
+  python_seconds: 10
+
+  max_wall_time: 30s
+
+  verification:
+    required: true
+
+Dann optimiert unser Harness nicht einfach auf „beste Antwort“, sondern auf:
+Utility=GPU time+Tokens+Tool cost+LatencyQuality×Confidence​
+
+Das wäre für mich die eigentliche Forschungsfrage hinter dem ganzen Projekt: nicht „Wie mache ich ein 4B-Modell so schlau wie möglich?“, sondern wie verteile ich begrenzte lokale Compute-Ressourcen so, dass aus einem kleinen Modell ein möglichst leistungsfähiges Gesamtsystem entsteht?
+
+Und bei der Sprachfrage wäre mein jetziger Favorit daher ziemlich klar: V1 Python, aber streng service-/interface-basiert; später eventuell Rust für harnessd, Scheduler, Tool-Gateway und Sandbox-Management. Nicht weil Rust das LLM schneller macht, sondern weil wir damit bei wachsender Rekursion und Parallelität einen sehr robusten, kleinen Agent-Runtime-Kern bekommen.
+
+Macht es auch Sinn, dass wir neben MCP Usage innerhalb des Harness auch ACP, also Agent Communication Protocol irgendwie mit einbauen? Würde das einen Benefit ergeben?
+
+Ja — aber ich würde es inzwischen als A2A-Schicht bauen, nicht als ACP-Schicht.
+
+ACP war genau für dein Szenario gedacht: MCP verbindet einen Agenten mit Tools und Daten, ACP verband Agenten miteinander. Inzwischen ist ACP jedoch in A2A unter der Linux Foundation aufgegangen. A2A ist seit März 2026 bei v1.0 stabil; im Changelog liegt inzwischen 1.0.1. Es unterstützt Agent Discovery, Tasks, Streaming, Artifacts und unterschiedliche Transportbindungen.
+
+Für unseren Harness würde ich deshalb eine ziemlich klare Trennung machen:
+
+                   ┌──────────────────────┐
+                   │      OUR HARNESS     │
+                   └──────────┬───────────┘
+                              │
+             ┌────────────────┼────────────────┐
+             │                │                │
+             ▼                ▼                ▼
+          MCP             Agent Bus           A2A
+             │                │                │
+             ▼                ▼                ▼
+          TOOLS        INTERNAL AGENTS    EXTERNAL AGENTS
+             │                │                │
+       web / CLI /       critic / RLM /     other harnesses
+       Playwright /      researcher /       cloud agents
+       databases         verifier           foreign stacks
+
+MCP = southbound. A2A = east/west.
+
+Und unser interner Agent-Bus bleibt bewusst proprietär und ultraschlank.
+Warum ich A2A nicht intern für alles verwenden würde
+
+Angenommen unser Thinking-Modus startet:
+
+candidate_A
+candidate_B
+candidate_C
+critic
+verifier
+synthesizer
+
+Ich würde daraus keine sechs A2A-Agenten machen.
+
+Denn eigentlich laufen sie alle:
+
+    auf demselben Rechner,
+
+    mit demselben Qwen-4B,
+
+    über denselben Inference Server,
+
+    im selben Harness,
+
+    unter demselben Scheduler.
+
+Dafür wäre A2A unnötiger Protokoll-Overhead.
+
+Intern würde vielleicht so etwas reichen:
+
+AgentTask(
+    role="critic",
+    goal=...,
+    inputs=[artifact_17, artifact_18, artifact_19],
+    budget=ComputeBudget(...),
+    tools=["web.search", "python"],
+)
+
+Dann landet das einfach in unserer Async-Queue.
+Ein „Agent“ sollte bei uns sowieso kein eigenes LLM sein
+
+Das finde ich besonders wichtig.
+
+Nicht:
+
+Research Agent
+    ↓
+Qwen instance
+
+Critic Agent
+    ↓
+Qwen instance
+
+Coding Agent
+    ↓
+Qwen instance
+
+Das wäre auf deiner GPU Unsinn.
+
+Sondern:
+
+                    QWEN 4B
+               inference backend
+                      ▲
+                      │
+            continuous batching
+                      │
+      ┌───────────────┼────────────────┐
+      │               │                │
+ Research Agent   Critic Agent    Coding Agent
+      │               │                │
+   state A          state B           state C
+   policy A         policy B          policy C
+   tools A          tools B           tools C
+
+Ein Agent ist damit eigentlich:
+Agent=State+Policy+Tools+Knowledge+Budget
+
+Das Modell wird geteilt.
+
+Dadurch können wir viele logische Agents haben, obwohl physisch nur ein kleines Modell läuft.
+Und genau an der Systemgrenze wird A2A interessant
+
+Beispielsweise baut jemand einen fantastischen Security-Agenten:
+
+security-agent.example
+
+Der läuft vielleicht mit einem 70B-Modell irgendwo anders.
+
+Unser lokaler Agent entdeckt:
+
+Agent Card
+
+name: SecurityReviewAgent
+skills:
+  - source-code-security-review
+  - dependency-audit
+  - threat-modeling
+
+A2A definiert tatsächlich solche Agent Cards, über die Agents unter anderem Fähigkeiten, Skills, Interfaces und Security Requirements beschreiben können.
+
+Unser Harness könnte dann sagen:
+
+Task:
+Analyze artifact://repo/current
+
+Expected:
+security_report
+
+Budget:
+120 seconds
+
+und der fremde Agent erledigt das.
+
+Keine Kenntnis darüber nötig:
+
+welches LLM?
+welches Framework?
+welche Tools?
+welcher Prompt?
+welche interne Memory?
+
+Genau diese Opazität ist ein ausdrückliches Designziel von A2A: Agents sollen kooperieren können, ohne Zugriff auf internen State, Memory oder Tools des anderen zu benötigen.
+Jetzt kommt aber der Teil, der für unser System richtig spannend wäre
+
+Wir haben ja gerade über Self-Improvement und Skills gesprochen.
+
+Unsere interne Skill Library könnte automatisch in A2A Agent Cards übersetzt werden.
+
+Zum Beispiel besitzen wir:
+
+skills/
+├── deep-research/
+├── github-analysis/
+├── browser-investigation/
+├── python-data-analysis/
+└── code-review/
+
+Dann könnten wir sagen:
+
+AgentProfile:
+  researcher
+
+Internal skills:
+  deep-research
+  browser-investigation
+
+External interface:
+  A2A
+
+Der Harness generiert daraus:
+
+ResearchAgent
+├── skill: deep_research
+├── skill: source_verification
+├── skill: web_investigation
+└── skill: literature_search
+
+Und veröffentlicht eine entsprechende Agent Card.
+
+Das bedeutet:
+
+Unsere Skills sind intern ausführbare Fähigkeiten und extern zugleich discoverable Agent Capabilities.
+
+Das gefällt mir architektonisch sehr.
+A2A + RLM ergibt ebenfalls etwas Interessantes
+
+Unsere Rekursion muss nämlich nicht ausschließlich lokal sein.
+
+Normalerweise:
+
+Parent RLM
+│
+├── local child
+├── local child
+└── local child
+
+Aber bei Bedarf:
+
+Parent Agent
+│
+├── local RLM child
+│
+├── local Python child
+│
+├── A2A → specialist coding agent
+│
+└── A2A → specialist research agent
+
+Der Parent weiß gar nicht unbedingt, ob ein Subtask lokal oder remote ausgeführt wurde.
+
+Dafür würde ich eine Abstraktion bauen wie:
+
+class AgentExecutor:
+
+    async def execute(
+        task: AgentTask
+    ) -> AgentResult:
+        ...
+
+Implementierungen:
+
+LocalAgentExecutor
+RecursiveAgentExecutor
+A2AAgentExecutor
+
+Dann kann der Scheduler entscheiden.
+Und hier sehe ich sogar einen zukünftigen Router
+
+Angenommen:
+
+Task:
+"Prove this mathematical conjecture..."
+
+Unser Harness kennt:
+
+local.generalist
+cost = 0
+speed = fast
+quality.math = 0.62
+
+remote.math-agent
+cost = $0.04
+speed = medium
+quality.math = 0.94
+
+Dann könnte die Policy entscheiden:
+
+Try local first.
+
+If verifier confidence < 0.7:
+    delegate to math-agent via A2A.
+
+Oder:
+
+local candidate
+        +
+remote candidate
+        ↓
+local critic
+        ↓
+verifier
+
+Damit hätten wir plötzlich heterogeneous inference.
+
+Unser kleines Modell bleibt die Zentrale, zieht aber punktuell Spezialisten hinzu.
+Wichtig: A2A sollte dabei nicht unseren kompletten Kontext verschicken
+
+Sonst zerstören wir gerade wieder unseren ganzen RLM-/Token-Sparansatz.
+
+Nicht:
+
+A2A message:
+
+SYSTEM PROMPT
++ 80k conversation
++ knowledge
++ all previous agents
++ all tool results
+
+Sondern ein Handoff Contract:
+
+task:
+  goal: >
+    Check whether the proposed architecture
+    contains concurrency bugs.
+
+constraints:
+  - focus on scheduler
+  - do not modify code
+
+inputs:
+  - artifact://code/scheduler.rs
+  - artifact://analysis/current-design
+
+knowledge:
+  - okf://project/architecture/concurrency
+
+expected_output:
+  type: review
+  schema: security-review-v2
+
+budget:
+  tokens: 4000
+  wall_time: 30s
+
+Vielleicht 500 Tokens statt 50.000.
+
+Der Child Agent holt sich nur die Artifacts, die er tatsächlich braucht.
+A2A unterstützt dieses Modell ziemlich gut
+
+Die aktuelle Spezifikation unterscheidet bewusst zwischen Messages und Artifacts.
+
+Messages steuern die Interaktion; Ergebnisse sollen als Artifacts an einem Task hängen. Dazu gibt es einen Task Lifecycle sowie Streaming von Status- und Artifact-Updates.
+
+Das passt geradezu perfekt zu unserem Artifact Store.
+
+Wir könnten intern benutzen:
+
+artifact://research/293
+
+und an der A2A-Grenze daraus:
+
+A2A Artifact
+
+machen.
+Daraus würde ich unseren Protocol Stack ableiten
+Ebene	Protokoll
+User → Harness	HTTP / WebSocket / CLI
+Harness → LLM	OpenAI-compatible API
+Agent → Tool	MCP
+Internal Agent → Agent	eigener Agent Bus
+External Agent → Agent	A2A v1
+Legacy ACP Agent	optionaler ACP→A2A Adapter
+Knowledge	OKF
+Large Context	Artifacts + RLM
+Compute	Python Kernel / CLI
+Browser	Playwright
+
+Ich würde also keinen ACP-Core mehr implementieren.
+
+Wenn wir später BeeAI-/Legacy-ACP-Kompatibilität brauchen:
+
+ACP
+ ↓
+Compatibility Adapter
+ ↓
+Internal AgentTask
+
+Das ist überschaubar.
+
+Aber unsere öffentliche Agent-Schnittstelle wäre A2A.
+Und ich würde A2A schon in V1 architektonisch berücksichtigen, aber noch nicht implementieren
+
+Das ist der kleine Unterschied.
+
+Schon jetzt:
+
+class AgentDescriptor:
+    name
+    description
+    skills
+    input_modes
+    output_modes
+
+class AgentTask:
+    id
+    context_id
+    goal
+    inputs
+    budget
+
+class AgentArtifact:
+    id
+    mime_type
+    content
+
+class AgentResult:
+    status
+    artifacts
+
+Das liegt erstaunlich nah an A2As aktuellem Datenmodell mit AgentCard, Task, Message, Part und Artifact.
+
+Dann ist später:
+
+Internal object
+      ↕
+A2A adapter
+
+fast nur Mapping.
+Mein Architekturentscheid wäre daher:
+
+V1
+────────────────────────
+MCP              ✅
+Internal AgentBus ✅
+A2A data model    ✅ berücksichtigen
+A2A transport     ❌ noch nicht
+ACP               ❌
+
+
+V2
+────────────────────────
+MCP               ✅
+Internal AgentBus ✅
+A2A Client        ✅
+A2A Server        ✅
+ACP bridge        nur bei Bedarf
+
+Der Nutzen entsteht nämlich erst dann wirklich, wenn wir mit unabhängigen Agents außerhalb unseres eigenen Harness kommunizieren wollen. Für unsere candidate → critic → verifier → RLM-child-Architektur würde A2A dagegen zunächst nur zusätzliche Komplexität erzeugen.
+
+Und langfristig ergibt sich damit ein ziemlich sauberes Bild: MCP macht unseren kleinen Agenten mächtig, RLM/RAH macht ihn skalierbar im Denken, OKF gibt ihm langfristiges Wissen, Skills lassen seine Arbeitsweise besser werden, und A2A erlaubt ihm, Fähigkeiten einzukaufen, die er selbst nicht besitzt. Das wäre für mich ein sehr stimmiger Protocol Stack.
+
+Der nächste Schritt, den ich an unserer Stelle machen würde, wäre jetzt tatsächlich eine richtige technische Architecture Spec für „Lotti-Harness v0.1“ zu zeichnen: Komponenten, Interfaces, Datenmodelle, Agent Lifecycle, Reasoning Strategies, RLM, OKF, Skill Evolution, MCP/A2A, GPU Scheduler und welche Teile Prozesse vs. Libraries sind. Dann könnten wir daraus ziemlich direkt ein Repo-Skeleton ableiten.
+
+https://github.com/thecodacus/llama.cpp
+
+Schau mal bitte hier. Ich glaube, der nutzt LLaMA CCP und hat das hart optimiert. Können wir das auch irgendwie mit einbauen, dass das Modell über LLaMA CCP geladen wird und dann mit den Optimierungen bei mir auf der Grafikkarte läuft? Vielleicht kriegen wir da noch ein bisschen mehr Geschwindigkeit raus. Bitte halte im Hinterkopf, dass ich eine Radeon 9070 XT Grafikkarte habe mit 16 GB RAM.
+
+Ja — llama.cpp würde ich inzwischen ausdrücklich als First-Class-Inference-Backend unseres Harnesses einplanen. Gerade bei deiner Radeon RX 9070 XT mit 16 GB VRAM ist das ziemlich spannend.
+
+Eine wichtige Einschränkung vorweg: Der konkrete thecodacus/llama.cpp-Fork ist nicht die Optimierung, die wir für deine GPU wollen. Seine beiden hervorgehobenen Beschleunigungen betreffen CUDA: gepinnte CPU-MoE-Weights für schnellere Host→GPU-DMA-Transfers und Prefetching über einen zweiten CUDA-Stream. Der Benchmark ist eine RTX 3060 mit einem großen Qwen-MoE-Modell, dessen Experts teilweise im RAM liegen.
+
+Für unser geplantes 4B/8B-Modell, das komplett in deinen 16 GB VRAM liegt, ist dieser spezielle Patch also weitgehend irrelevant.
+
+Die zugrunde liegende Idee ist aber genau richtig.
+
+Ich würde llama.cpp so in den Harness setzen
+                         AGENT HARNESS
+                              │
+                      InferenceBackend
+                              │
+               ┌──────────────┴───────────────┐
+               │                              │
+          LlamaCppBackend                OtherBackend
+               │                       vLLM / SGLang etc.
+               │
+         HTTP / local IPC
+               │
+               ▼
+         ┌──────────────┐
+         │ llama-server │
+         │              │
+         │ GGUF         │
+         │ KV cache     │
+         │ batching     │
+         │ reasoning    │
+         │ speculation  │
+         └──────┬───────┘
+                │
+            ROCm / HIP
+                │
+                ▼
+        Radeon RX 9070 XT
+            RDNA4/gfx1201
+             16 GB VRAM
+
+Der Python- oder spätere Rust-Harness lädt das Modell also überhaupt nicht selbst.
+
+Er spricht einfach beispielsweise mit:
+
+http://localhost:8080/v1/chat/completions
+
+llama-server bietet inzwischen OpenAI-kompatible Chat-Completions und Responses-Endpunkte, JSON-Schema-Ausgabe, Function Calling, Reasoning-Kontrolle und Jinja-Templates. Damit ist die Schnittstelle für unseren Harness erstaunlich komplett.
+
+Das gefällt mir viel besser als llama-cpp-python tief in unsere Runtime einzubauen.
+
+Und deine 9070 XT wird tatsächlich offiziell unterstützt
+
+Das ist mittlerweile ziemlich erfreulich.
+
+AMD listet die RX 9070 XT als RDNA4 / gfx1201 mit 16 GiB VRAM und 64 Compute Units.
+
+Noch besser: AMDs aktuelle llama.cpp-Dokumentation zeigt sogar explizit eine RX 9070 XT als erkanntes ROCm-Gerät:
+
+ROCm0: AMD Radeon RX 9070 XT
+       16304 MiB
+
+ROCm 7.14 wird dort inzwischen sowohl für Linux als auch Windows beschrieben.
+
+Wir haben also nicht mehr die Situation von vor ein paar Jahren:
+
+„AMD? Vielleicht Vulkan, vielleicht ROCm, viel Glück.“
+
+Sondern gfx1201 ist ein echter Target-Pfad.
+
+Es gibt sogar einen Qwen3.5-4B-Benchmark auf exakt deiner GPU
+
+Das fand ich besonders interessant.
+
+Ein llama.cpp-Test mit:
+
+AMD Radeon RX 9070 XT
+gfx1201
+Qwen3.5-4B
+Q4_0
+
+kam bei einer bestimmten llama.cpp-Version ungefähr auf:
+
+Backend	Decode
+Vulkan	~102,5 tok/s
+ROCm	~103,3 tok/s
+
+Beim ROCm-Test lagen beim Prompt Processing etwa 3392 tok/s an.
+
+Das ist aber kein Versprechen für unseren Build. Es zeigt nur, dass unsere Größenordnung plausibel ist.
+
+Und noch interessanter:
+
+Qwen3-4B Q4_0
+Vulkan → ~171 tok/s
+ROCm   → ~131 tok/s
+
+auf derselben 9070 XT.
+
+Das sagt etwas Wichtiges:
+
+Unsere Geschwindigkeit hängt nicht nur von GPU + Parameterzahl ab, sondern massiv davon, wie gut die konkrete Modellarchitektur im jeweiligen llama.cpp-Backend optimiert ist.
+
+Genau deshalb würde ich ROCm und Vulkan benchmarken, statt ideologisch einen Backend-Sieger festzulegen.
+
+Für unseren Thinking-Modus wird llama-server noch interessanter
+
+Erinnerst du dich an:
+
+Candidate A
+Candidate B
+Candidate C
+     ↓
+Critic
+
+Wir sollten nicht machen:
+
+llama process A
+llama process B
+llama process C
+
+Sondern:
+
+                    one Qwen 4B
+                         │
+                    llama-server
+                         │
+              ┌──────────┼──────────┐
+              │          │          │
+           slot A     slot B     slot C
+              │          │          │
+        candidate A candidate B candidate C
+
+llama-server arbeitet mit mehreren Slots und einem gemeinsamen Batch; aktive Slots können gemeinsam in einen Decode-Batch gepackt werden.
+
+Das ist genau das, was wir brauchen.
+
+Unsere Python-Seite macht einfach:
+
+await asyncio.gather(
+    infer(candidate_a),
+    infer(candidate_b),
+    infer(candidate_c),
+)
+
+und llama.cpp kümmert sich um GPU-Batching.
+
+Das könnte für unseren Test-Time-Compute-Ansatz richtig hübsch werden.
+
+Und wir können noch eine zweite Speed-Schraube benutzen: Speculative Decoding
+
+Das würde ich unbedingt benchmarken.
+
+Aktuelles llama.cpp unterstützt mittlerweile:
+
+draft-simple
+EAGLE-3
+DFlash
+DSpark
+MTP
+n-gram speculation
+
+Und Qwen3.5 hat eingebaute MTP-Strukturen, für die llama.cpp inzwischen entsprechende Konvertierungs-/Runtime-Unterstützung besitzt.
+
+Dann kann beispielsweise:
+
+Qwen3.5-4B
+      │
+      ├── predicts token 1
+      ├── predicts token 2
+      ├── predicts token 3
+      │
+      ▼
+target verifies block
+
+statt jedes Token vollständig seriell zu berechnen.
+
+Konzeptionell:
+
+llama-server \
+    -m Qwen3.5-4B.gguf \
+    -ngl 999 \
+    -fa on \
+    --spec-type draft-mtp \
+    --spec-draft-n-max 3
+
+Aber da würde ich nichts ungeprüft anschalten.
+
+Gerade diesen Monat gab es auf HIP eine Diskussion, dass bestimmte unsafe/fast-math-Optimierungen bei MTP die exakte greedy Reproduzierbarkeit verletzen können.
+
+Also wieder:
+
+speed optimization
+       ↓
+benchmark
+       ↓
+correctness eval
+       ↓
+erst dann aktivieren
+Und da sehe ich einen richtig schönen Auto-Tuner für unser Projekt
+
+Beim ersten Start könnte der Harness deine Hardware erkennen:
+
+gpu:
+  vendor: AMD
+  model: Radeon RX 9070 XT
+  arch: gfx1201
+  vram: 16GB
+
+Dann startet unser:
+
+Inference Profiler
+
+und testet automatisch.
+
+Beispielsweise:
+
+Qwen3.5-4B Q4_K_M
+
+ROCm
+ROCm + FA
+ROCm + MTP
+ROCm + quantized KV
+
+Vulkan
+Vulkan + FA
+Vulkan + MTP
+Vulkan + quantized KV
+
+Jeweils:
+
+pp512
+pp4096
+
+tg128
+tg1024
+
+1 concurrent
+3 concurrent
+5 concurrent
+
+Und speichert:
+
+profile:
+  gpu: gfx1201
+  model: qwen3.5-4b-q4_k_m
+
+  best_single:
+    backend: vulkan
+    config: ...
+
+  best_parallel:
+    backend: rocm
+    config: ...
+
+  best_long_context:
+    backend: rocm
+    config: ...
+
+Das wäre viel besser als hart zu codieren:
+
+ROCm ist schneller.
+
+Vielleicht ist ROCm bei Prefill schneller und Vulkan bei Decode.
+
+Dann könnte unser Harness sogar workloadabhängig entscheiden.
+
+Bei deiner 16-GB-Karte würde ich außerdem nicht sofort Q4 wählen
+
+Das ist ein Punkt, bei dem ich unsere ursprüngliche Idee etwas ändern würde.
+
+Ein Qwen3.5-4B Q4_0 belegt im genannten Benchmark gerade einmal rund 2,4 GiB.
+
+Du hast 16 GB.
+
+Deshalb würde ich testen:
+
+Q4_K_M
+Q5_K_M
+Q6_K
+Q8_0
+BF16
+
+Für unseren Agenten ist möglicherweise:
+
+Q6_K @ 110 tok/s
+
+wertvoller als:
+
+Q4 @ 140 tok/s
+
+wenn Tool Selection, Reasoning und Critic dadurch zuverlässiger werden.
+
+Bei einem 4B-Modell würde ich Qualität nicht unnötig durch aggressive Quantisierung verschenken, wenn wir massig VRAM frei haben.
+
+Bei einem 8B-Modell sieht die Rechnung natürlich anders aus.
+
+Die restlichen VRAM können wir produktiv einsetzen
+
+Das ist nämlich eigentlich unser Luxus.
+
+Nicht:
+
+Model:       15 GB
+KV:           1 GB
+free:         0 GB
+
+sondern vielleicht:
+
+4B Q6/Q8 model     ~3–5 GB
+KV cache            mehrere GB
+parallel slots      mehrere GB
+speculator          optional
+headroom             Rest
+
+Dadurch bekommen wir:
+
+Größeren KV-Cache
+
+llama.cpp unterstützt inzwischen quantisierte K/V-Caches wie:
+
+q8_0
+q4_0
+q5_0
+...
+
+Für RLM brauchen wir zwar bewusst keine riesigen Kontexte, aber 3–5 parallele Agent-Branches profitieren davon enorm.
+
+Es gibt momentan allerdings eine RDNA4-Falle
+
+Das ist wichtig.
+
+Ende Juli wurde ein Problem für gfx1201 gemeldet: Nach dem Entfernen eines älteren rocWMMA-Flash-Attention-Pfads kann die aktuelle native MMA-Implementierung bei tiefem Context Prompt Processing auf RDNA4 bis zu ungefähr 2× langsamer sein. Decode war in dem Test nicht betroffen beziehungsweise leicht schneller. Der Test lief auf einer R9700, die wie deine RX 9070 XT ebenfalls gfx1201 ist.
+
+Das heißt nicht automatisch, dass deine Karte dasselbe Verhalten zeigt.
+
+Aber ich würde deshalb bewusst benchmarken:
+
+A: current upstream master
+
+B: known pre-regression build
+
+C: Vulkan
+
+D: AMD-Ecosystem fork
+
+Und nicht einfach blind git pull && compile.
+
+AMD selbst arbeitet gerade massiv daran
+
+Es gibt momentan eine ganze Serie von AMD-Patches für llama.cpp; Ende Juli wurden beispielsweise Layout-, Multi-Stream- und Kernel-Optimierungen upstream diskutiert.
+
+Und noch spannender:
+
+Am 17. August 2026 hat AMD einen RFC für einen neuen nativen AMD-Backend-Pfad ggml-hrx veröffentlicht. AMD beschreibt dort explizit, dass die bestehenden HIP- und Vulkan-Wege langfristig Nachteile haben und man einen AMD-nativen Backendpfad besser optimieren möchte.
+
+Den würde ich noch nicht als Basis unseres Harnesses nehmen.
+
+Aber unser:
+
+InferenceBackend
+
+macht uns dafür perfekt vorbereitet.
+
+Heute:
+
+llama.cpp/ROCm
+
+morgen vielleicht:
+
+llama.cpp/HRX
+
+ohne Änderungen am Agent-Core.
+
+Ich würde unsere Architektur deshalb jetzt konkret ändern
+
+Vorher hatten wir:
+
+Harness
+   ↓
+vLLM
+   ↓
+GPU
+
+Ich würde daraus machen:
+
+                     Agent Harness
+                          │
+                   Inference Router
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+        LlamaCppBackend            SGLangBackend
+          PRIMARY                    optional
+              │
+         llama-server
+              │
+       ┌──────┴───────┐
+       │              │
+     ROCm           Vulkan
+       │              │
+       └──────┬───────┘
+              │
+        RX 9070 XT
+
+Und llama.cpp wäre für V1 sogar mein Favorit vor vLLM.
+
+Warum?
+
+Weil es mittlerweile fast exakt unsere Anforderungen abdeckt:
+
+GGUF / aggressive Quantisierung
+Radeon ROCm
+Radeon Vulkan
+Flash Attention
+KV Quantization
+Multi-slot Batching
+OpenAI API
+Tool Calls
+structured JSON
+Reasoning/Thinking Controls
+Speculative Decoding
+MTP
+sehr geringer Runtime-Overhead.
+
+Und der Clou ist: Unser Harness bleibt Python. Der wirklich performancekritische Inference-Teil ist C/C++/GPU-Code in llama.cpp. Python orchestriert lediglich.
+
+Damit fällt ein großer Teil meiner vorherigen Sorge „Python vs. Rust wegen Performance“ sogar weg.
+
+Mein konkreter Benchmark für deine 9070 XT wäre daher
+                    RX 9070 XT / 16 GB
+                            │
+           ┌────────────────┼────────────────┐
+           │                │                │
+       upstream         upstream       AMD-Ecosystem
+        ROCm             Vulkan            ROCm
+           │                │                │
+           └────────────────┼────────────────┘
+                            │
+                   Qwen3.5-4B GGUF
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+           Q4_K_M         Q6_K          Q8_0
+              │             │             │
+              └─────────────┼─────────────┘
+                            │
+                       Benchmark
+                            │
+          ┌─────────────────┼─────────────────┐
+          │                 │                 │
+        normal          3 branches        MTP/spec
+          │                 │                 │
+          └─────────────────┼─────────────────┘
+                            ▼
+                  quality / tok/s /
+                 latency / VRAM / watts
+
+Genau danach würde ich erst den Default auswählen.
+
+Mein Verdacht wäre momentan: Auf deiner Maschine wird die spannendste Konfiguration nicht unbedingt „maximal quantisiert + ROCm“ sein, sondern möglicherweise Q5/Q6 + Vulkan oder ROCm + Flash Attention + mehrere llama-server-Slots, und für bestimmte Reasoning-Workloads zusätzlich MTP/speculative decoding.
+
+Und dann wird unsere vorherige Thinking-Idee richtig interessant: Wenn wir ungefähr in der Größenordnung 100+ tok/s pro Einzelstream liegen und drei Kandidaten serverseitig sinnvoll batchen können, könnten wir uns mehrere Reasoning-Pfade leisten, ohne dass sich der Agent träge anfühlt. Genau diesen Hebel würde ich jetzt als einen der Kernbestandteile des Projekts betrachten.
+
+Kleine Korrigierung, ist doch eine 90 60 XT von AMD.
+
+Ah, danke — RX 9060 XT mit 16 GB. Das ändert ein paar Details, aber nicht die Grundentscheidung. Die Karte ist ebenfalls RDNA4, wird von AMD aktuell offiziell für ROCm geführt und hat laut AMDs ROCm-Tabelle gfx1200, 32 Compute Units und 16 GiB VRAM.
+
+Für unser Harness heißt das: llama.cpp bleibt absolut sinnvoll, aber ich würde ROCm und Vulkan auf deiner konkreten Karte gegeneinander benchmarken. Es gibt bei der 9060 XT Hinweise darauf, dass Vulkan bei Token-Generation auf RDNA4 teils schneller sein kann, während ROCm beim Prompt-Prefill Vorteile hat; gleichzeitig ist das Backend-Verhalten versionsabhängig.
+
+Die Architektur würde ich daher so festhalten:
+
+Harness
+   ↓
+InferenceBackend
+   ↓
+llama-server
+   ├── Vulkan
+   └── ROCm/HIP
+          ↓
+     RX 9060 XT 16 GB
+
+Und unser Startup-Benchmark sollte genau für gfx1200 Profile erzeugen: Q4_K_M, Q6_K, Q8_0, unterschiedliche Context-Größen, 1/3/5 parallele Thinking-Branches, Flash Attention und ggf. Speculative/MTP. Danach wählen wir nicht pauschal „ROCm“, sondern das schnellste stabile Profil für deine Workload.
+
+Mit 16 GB würde ich weiterhin eher Q6/Q8 für ein 4B-Modell testen statt aggressiv auf Q4 zu gehen. Die 9060 XT hat laut AMD außerdem recht ordentliche Matrix-Leistung für FP16/FP8/INT8/INT4, sodass sie für genau diesen lokalen Small-LLM-Agent-Harness ein ziemlich gutes Ziel ist.
+
+Der einzige Punkt aus meiner vorherigen Antwort, den wir korrigieren müssen: nicht gfx1201, sondern offiziell gfx1200 für die RX 9060 XT. Alles Weitere – llama.cpp als separater Server, mehrere Slots für unsere Thinking-Branches, RLM/RAH darüber und später Auto-Tuning – bleibt bestehen.
+
+
+---
+
+## Implementierungsstatus (Lynx v0.1)
+
+Die oben beschriebene Zielarchitektur ist in bounded Slices umgesetzt. Der gemeinsame Qwen-/llama.cpp-Inferencepfad, `fast`/`think`/`research`, Tool-Router, Tool-Gateway, Budgets, Trust Boundary, Flight Recorder, Checkpoints, Replay/Fork/Resume, OKF-Candidate-Store und Ablation-Evals sind aktiv.
+
+Zusätzliche opt-in Slices: `RlmContextEngine`, `RlmExecutor`, `LocalChildExecutor` (RAH), Best-of-N-Branch-Proposals, versionierter Skill-Katalog mit Candidate/Stable-Lifecycle, MCP-JSON-RPC-Stdio mit Initialize-/Versionshandshake, Playwright-CLI-Sensor, LSP-Content-Length-Sensor, persistenter Python-Worker, A2A-Task-/Artifact-Modelle plus HTTPS-Allowlist-Client, Inference-Profiler sowie verifizierter Trajectory-Export.
+
+Bewusst nicht als Default aktiviert: öffentliche HTTP-Bindung, Remote-LLM/A2A ohne HTTPS-Allowlist, externe MCP-/Browser-Aktionen, Python-Netzwerk, automatische Skill-/Knowledge-Promotion, unbeschränkte RLM-Rekursion, automatisches Parent-Merge, MTP/Speculative Decoding, Vulkan (wenn die Entwicklungsheader fehlen), Fine-Tuning und Rust-Rewrite. Diese Funktionen benötigen jeweils eigene Hardware-, Sicherheits- oder Evaluationsnachweise; die Slices liefern bereits die kontrollierten Erweiterungspunkte.
+
+Validierung: `make test` (37 Tests, ein expliziter Live-Server-Skip), `uv lock --check`, Python-Compileall und Shell-Syntaxchecks.
