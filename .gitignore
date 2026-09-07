@@ -14,3 +14,4 @@ build/
 third_party/
 models/
 data/runs/
+.lynx/

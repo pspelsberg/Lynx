@@ -183,16 +183,27 @@ def parse_decision(raw: str, known_tools: set[str]) -> Decision:
         except (json.JSONDecodeError, ValueError):
             continue
     if not isinstance(data, dict) and start >= 0:
-        # Gracefully recover truncated finish decisions when token limit cuts off long answers
+        # Gracefully recover truncated finish decisions or filesystem.write content
+        # when the token limit cuts off long generations mid-string.
         partial = text[start:].rstrip()
         if partial.endswith("\\"):
             partial = partial[:-1]
-        for closing in ('"}', '"}\n```', '"}```', '}'):
+        for closing in ('"}}', '"}}\n```', '"}}```', '"}', '"}\n```', '"}```', '}', '}}'):
             try:
                 candidate_data = _strict_json_loads(partial + closing)
-                if isinstance(candidate_data, dict) and candidate_data.get("type") == DecisionType.FINISH:
-                    data = candidate_data
-                    break
+                if isinstance(candidate_data, dict):
+                    if candidate_data.get("type") == DecisionType.FINISH:
+                        data = candidate_data
+                        break
+                    if (
+                        candidate_data.get("type") == DecisionType.TOOL
+                        and candidate_data.get("tool") == "filesystem.write"
+                        and isinstance(candidate_data.get("arguments"), dict)
+                        and "path" in candidate_data["arguments"]
+                        and "content" in candidate_data["arguments"]
+                    ):
+                        data = candidate_data
+                        break
             except (json.JSONDecodeError, ValueError):
                 continue
     if not isinstance(data, dict):
@@ -308,6 +319,11 @@ class LlamaCppBackend:
             "context": context,
         }
         user_content = json.dumps(user_content_dict, ensure_ascii=False, allow_nan=False, sort_keys=True)
+        enable_thinking = (
+            os.getenv("LYNX_ENABLE_THINKING") == "1"
+            and bool(self.profile.supports_thinking if self.profile else context.get("mode") in {"think", "research"})
+            and context.get("mode") in {"think", "research"}
+        )
         payload = {
             "model": self.model,
             "temperature": self.profile.temperature if self.profile else 0,
@@ -317,7 +333,7 @@ class LlamaCppBackend:
                 {"role": "user", "content": user_content},
             ],
             "response_format": {"type": "json_object"},
-            "chat_template_kwargs": {"enable_thinking": bool(self.profile.supports_thinking if self.profile else context.get("mode") in {"think", "research"}) and context.get("mode") in {"think", "research"}},
+            "chat_template_kwargs": {"enable_thinking": enable_thinking},
         }
         body = json.dumps(payload).encode()
         # Native asyncio I/O is cancellation-safe; cancelling a run closes the
@@ -330,7 +346,13 @@ class LlamaCppBackend:
                 raise InferenceError("invalid llama-server response")
             self.last_usage = response.get("usage", {}) if isinstance(response.get("usage", {}), dict) else {}
             self.last_timings = response.get("timings", {}) if isinstance(response.get("timings", {}), dict) else {}
-            content = response["choices"][0]["message"]["content"]
+            message = response["choices"][0]["message"]
+            content = message.get("content", "")
+            if not content and message.get("reasoning_content"):
+                raise InferenceError(
+                    "model spent all tokens on thinking (reasoning_content) without producing a JSON decision. "
+                    "Set LYNX_ENABLE_THINKING=0 or increase token budget."
+                )
             if not isinstance(content, (str, list)):
                 raise InferenceError("llama-server returned non-text content")
             if isinstance(content, list):

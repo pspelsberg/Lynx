@@ -33,7 +33,14 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(decision.type, DecisionType.FINISH)
         self.assertEqual(decision.answer, "Eine Maine Coon ist eine gro")
 
-        # Truncated tool calls or delegates must still be rejected (safety invariant)
+        # When token budget cuts off output mid-string in a filesystem.write tool call
+        truncated_write = r'{"type":"tool","tool":"filesystem.write","arguments":{"path":"article.md","content":"# Intro\nText'
+        decision_write = parse_decision(truncated_write, {"filesystem.write"})
+        self.assertEqual(decision_write.type, DecisionType.TOOL)
+        self.assertEqual(decision_write.tool, "filesystem.write")
+        self.assertEqual(decision_write.arguments, {"path": "article.md", "content": "# Intro\nText"})
+
+        # Dangerous tool calls like shell commands must still be rejected (safety invariant)
         truncated_tool = '{"type":"tool","tool":"shell.execute","arguments":{"command":"ls'
         with self.assertRaises(InferenceError):
             parse_decision(truncated_tool, {"shell.execute"})
