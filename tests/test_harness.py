@@ -26,6 +26,18 @@ class HarnessTests(unittest.TestCase):
         decision = parse_decision('```json\n{"type":"finish","answer":"ok"}\n```', set())
         self.assertEqual(decision.type, DecisionType.FINISH)
 
+    def test_parse_recovers_truncated_finish_decision(self):
+        # When token budget cuts off output mid-string in a finish response
+        truncated = '{"type":"finish","answer":"Eine Maine Coon ist eine gro'
+        decision = parse_decision(truncated, set())
+        self.assertEqual(decision.type, DecisionType.FINISH)
+        self.assertEqual(decision.answer, "Eine Maine Coon ist eine gro")
+
+        # Truncated tool calls or delegates must still be rejected (safety invariant)
+        truncated_tool = '{"type":"tool","tool":"shell.execute","arguments":{"command":"ls'
+        with self.assertRaises(InferenceError):
+            parse_decision(truncated_tool, {"shell.execute"})
+
     def test_network_guard_blocks_private_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             registry=ToolRegistry(); register_builtin_tools(registry, Path(directory))

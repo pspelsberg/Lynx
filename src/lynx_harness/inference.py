@@ -182,6 +182,19 @@ def parse_decision(raw: str, known_tools: set[str]) -> Decision:
             break
         except (json.JSONDecodeError, ValueError):
             continue
+    if not isinstance(data, dict) and start >= 0:
+        # Gracefully recover truncated finish decisions when token limit cuts off long answers
+        partial = text[start:].rstrip()
+        if partial.endswith("\\"):
+            partial = partial[:-1]
+        for closing in ('"}', '"}\n```', '"}```', '}'):
+            try:
+                candidate_data = _strict_json_loads(partial + closing)
+                if isinstance(candidate_data, dict) and candidate_data.get("type") == DecisionType.FINISH:
+                    data = candidate_data
+                    break
+            except (json.JSONDecodeError, ValueError):
+                continue
     if not isinstance(data, dict):
         raise InferenceError("model did not return a JSON object")
     kind = data.get("type")
