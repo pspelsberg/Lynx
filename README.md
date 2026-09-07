@@ -3,7 +3,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Zero Runtime Dependencies](https://img.shields.io/badge/core_deps-zero-success.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-148%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-149%20passed-brightgreen.svg)](tests/)
 [![Hardware](https://img.shields.io/badge/accelerated-AMD%20ROCm%20%7C%20Vulkan-red.svg)](scripts/)
 [![Model](https://img.shields.io/badge/model-Qwen3.5--4B--Q6__K.gguf-orange.svg)](config/model-manifest.json)
 
@@ -66,6 +66,8 @@ This repository is an engineered, hardened proof-of-concept (POC v0.1.0) demonst
   - `research`: Multi-step evidence collection, claim synthesis, and freshness verification.
 - **KV-Cache Prompt Stabilization:** Deterministic tool catalog sorting maximizes local prefix cache hits in `llama-server`.
 - **Sliding Observation Compaction:** Automatically compacts older tool outputs to avoid attention degradation and context exhaustion during long sessions.
+- **Token Cutoff & Truncation Resilience:** Gracefully recovers truncated JSON envelope closures for long text answers and `filesystem.write` content when generation limits are reached, while strictly refusing truncated risky operations (e.g. shell execution).
+- **Template Thinking Control:** `enable_thinking` can be toggled via `LYNX_ENABLE_THINKING` (default: `0`) to prevent small-model token budgets from being consumed by verbose chat-template reasoning before JSON emission.
 - **Progress Monitor:** Proactively detects and breaks cyclic action-observation loops.
 
 ### Safety & Workspace Integrity
@@ -118,7 +120,7 @@ uv sync
 ### 2. Run Test Suite & Demo
 
 ```bash
-# Run the 148+ offline tests
+# Run the 149+ offline tests
 make test
 # Or: uv run python -m unittest discover -s tests -v
 
@@ -273,6 +275,7 @@ Configuration is loaded from environment variables or a local `.env` file via `S
 | `LYNX_ALLOW_EXTERNAL` | `0` | Explicit toggle to permit external web searches |
 | `LYNX_ALLOW_REMOTE_LLM`| `0` | Explicit toggle to permit non-loopback inference |
 | `LYNX_KERNEL_ALLOW_NETWORK` | `0` | Explicit toggle to allow network in Python worker |
+| `LYNX_ENABLE_THINKING` | `0` | Explicit toggle to enable chat-template `<think>` reasoning |
 
 ---
 
@@ -325,7 +328,7 @@ Lynx/
 │   ├── model_profiles.py   # Single-model capability policies and prompt layouts
 │   ├── architecture.py     # Architecture fitness reporting
 │   └── cli.py              # CLI entry point (run, demo, undo, replay, fork, etc.)
-├── tests/                  # 148+ offline unit, security, and architectural tests
+├── tests/                  # 149+ offline unit, security, and architectural tests
 ├── docs/                   # Architecture specs, runbook, and ADRs
 ├── scripts/                # ROCm/Vulkan build, run, benchmark, and download scripts
 ├── config/                 # Service templates, manifests, and environment examples
